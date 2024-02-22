@@ -132,14 +132,11 @@ $(() => {
 
   function register(data) {
     webPhone = new WebPhone(data, {
-      enableDscp: true,
-      clientId: localStorage.getItem('webPhoneclientId')!,
+      appKey: localStorage.getItem('webPhoneAppKey')!,
       audioHelper: {
         enabled: true,
-        incoming: incomingAudio,
-        outgoing: outgoingAudio,
       },
-      logLevel,
+      logLevel: parseInt(String(logLevel), 10),
       appName: 'WebPhoneDemo',
       appVersion: '1.0.0',
       media: {
@@ -148,6 +145,10 @@ $(() => {
       },
       enableQos: true,
       enableMediaReportLogging: true,
+      // enableTurnServers: true or false,
+      // turnServers: [{urls:'turn:192.168.0.1', username : 'turn' , credential: 'turn'}],
+      // iceTransportPolicy: "all" or "relay",
+      // iceCheckingTimeout:500
     });
     global.webPhone = webPhone; // for debugging
 
@@ -567,7 +568,7 @@ $(() => {
     const session = webPhone.userAgent.invite(voiceToken, {
       fromNumber: primaryNumber,
     });
-    session.on('established', () => {
+    session.on('accepted', () => {
       onAccepted(session);
       console.log('Conference call started');
       bringIn(telephonySessionId, partyId)
