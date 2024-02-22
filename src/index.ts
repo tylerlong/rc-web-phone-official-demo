@@ -152,6 +152,11 @@ $(() => {
     });
     global.webPhone = webPhone; // for debugging
 
+    webPhone.userAgent.audioHelper.loadAudio({
+      incoming: incomingAudio,
+      outgoing: outgoingAudio,
+    });
+
     webPhone.userAgent.audioHelper.setVolume(0.3);
     webPhone.userAgent.on('invite', onInvite);
     webPhone.userAgent.on('connecting', () => {
@@ -320,14 +325,14 @@ $(() => {
     }
 
     $modal.find('.increase-volume').on('click', () => {
-      session.userAgent.audioHelper.setVolume(
-        (session.userAgent.audioHelper.volume !== null ? session.userAgent.audioHelper.volume : 0.5) + 0.1,
+      session.ua.audioHelper.setVolume(
+        (session.ua.audioHelper.volume !== null ? session.ua.audioHelper.volume : 0.5) + 0.1,
       );
     });
 
     $modal.find('.decrease-volume').on('click', () => {
-      session.userAgent.audioHelper.setVolume(
-        (session.userAgent.audioHelper.volume !== null ? session.userAgent.audioHelper.volume : 0.5) - 0.1,
+      session.ua.audioHelper.setVolume(
+        (session.ua.audioHelper.volume !== null ? session.ua.audioHelper.volume : 0.5) - 0.1,
       );
     });
 
@@ -412,7 +417,7 @@ $(() => {
       e.stopPropagation();
       session.hold().then(() => {
         console.log('Placing the call on hold, initiating attended transfer');
-        const newSession = session.userAgent.invite($transfer.val().trim());
+        const newSession = session.ua.invite($transfer.val().trim());
         newSession.once('established', () => {
           console.log('New call initated. Click Complete to complete the transfer');
           $modal.find('.transfer-form button.complete').on('click', () => {
@@ -457,11 +462,11 @@ $(() => {
     });
 
     $modal.find('.hangup').on('click', () => {
-      session.dispose();
+      session.terminate();
     });
 
-    session.on('established', () => {
-      console.log('Event: Established');
+    session.on('accepted', () => {
+      console.log('Event: Accepted');
       captureActiveCallInfo(session);
     });
     session.on('progress', () => {
