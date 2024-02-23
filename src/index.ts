@@ -2,12 +2,13 @@
 /* eslint-disable max-nested-callbacks */
 import $ from 'jquery';
 import { SDK } from '@ringcentral/sdk';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import type Platform from '@ringcentral/sdk/lib/platform/Platform';
+import { SessionState } from 'sip.js';
+
 import WebPhone from 'ringcentral-web-phone';
 import incomingAudio from 'url:./audio/incoming.ogg';
 import outgoingAudio from 'url:./audio/outgoing.ogg';
-
-import 'bootstrap/dist/css/bootstrap.min.css';
-import type Platform from '@ringcentral/sdk/lib/platform/Platform';
 global.jQuery = $;
 import('bootstrap');
 
@@ -132,11 +133,14 @@ $(() => {
 
   function register(data) {
     webPhone = new WebPhone(data, {
-      appKey: localStorage.getItem('webPhoneAppKey')!,
+      enableDscp: true,
+      clientId: localStorage.getItem('webPhoneclientId')!,
       audioHelper: {
         enabled: true,
+        incoming: incomingAudio,
+        outgoing: outgoingAudio,
       },
-      logLevel: parseInt(String(logLevel), 10),
+      logLevel,
       appName: 'WebPhoneDemo',
       appVersion: '1.0.0',
       media: {
@@ -145,17 +149,8 @@ $(() => {
       },
       enableQos: true,
       enableMediaReportLogging: true,
-      // enableTurnServers: true or false,
-      // turnServers: [{urls:'turn:192.168.0.1', username : 'turn' , credential: 'turn'}],
-      // iceTransportPolicy: "all" or "relay",
-      // iceCheckingTimeout:500
     });
     global.webPhone = webPhone; // for debugging
-
-    webPhone.userAgent.audioHelper.loadAudio({
-      incoming: incomingAudio,
-      outgoing: outgoingAudio,
-    });
 
     webPhone.userAgent.audioHelper.setVolume(0.3);
     webPhone.userAgent.on('invite', onInvite);
@@ -197,6 +192,37 @@ $(() => {
   }
 
   function onInvite(session) {
+    const $modal = cloneTemplate($incomingTemplate).modal({
+      backdrop: 'static',
+    });
+
+    session.stateChange.addListener((newState: SessionState) => {
+      switch (newState) {
+        case SessionState.Initial: {
+          console.log('Initial');
+          break;
+        }
+        case SessionState.Establishing: {
+          console.log('Establishing');
+          break;
+        }
+        case SessionState.Established: {
+          console.log('Established');
+          break;
+        }
+        case SessionState.Terminating: {
+          console.log('Terminating');
+          $modal.modal('hide');
+          break;
+        }
+        case SessionState.Terminated: {
+          console.log('Terminated');
+          $modal.modal('hide');
+          break;
+        }
+      }
+    });
+
     outboundCall = false;
     console.log('EVENT: Invite', session.request);
     console.log('To', session.request.to.displayName, session.request.to.friendlyName);
@@ -212,10 +238,6 @@ $(() => {
           console.error('Accept failed', e.stack || e);
         });
     } else {
-      const $modal = cloneTemplate($incomingTemplate).modal({
-        backdrop: 'static',
-      });
-
       $modal.find('.answer').on('click', () => {
         $modal.find('.before-answer').css('display', 'none');
         $modal.find('.answered').css('display', '');
@@ -270,10 +292,6 @@ $(() => {
             console.error('Reply failed', e2.stack || e2);
           });
       });
-
-      session.on('rejected', () => {
-        $modal.modal('hide');
-      });
     }
   }
 
@@ -319,20 +337,20 @@ $(() => {
       $info.text('time: ' + time + '\nstartTime: ' + JSON.stringify(session.startTime, null, 2) + '\n');
     }, 1000);
 
-    function close() {
+    function closeModal() {
       clearInterval(interval);
       $modal.modal('hide');
     }
 
     $modal.find('.increase-volume').on('click', () => {
-      session.ua.audioHelper.setVolume(
-        (session.ua.audioHelper.volume !== null ? session.ua.audioHelper.volume : 0.5) + 0.1,
+      session.userAgent.audioHelper.setVolume(
+        (session.userAgent.audioHelper.volume !== null ? session.userAgent.audioHelper.volume : 0.5) + 0.1,
       );
     });
 
     $modal.find('.decrease-volume').on('click', () => {
-      session.ua.audioHelper.setVolume(
-        (session.ua.audioHelper.volume !== null ? session.ua.audioHelper.volume : 0.5) - 0.1,
+      session.userAgent.audioHelper.setVolume(
+        (session.userAgent.audioHelper.volume !== null ? session.userAgent.audioHelper.volume : 0.5) - 0.1,
       );
     });
 
@@ -417,7 +435,7 @@ $(() => {
       e.stopPropagation();
       session.hold().then(() => {
         console.log('Placing the call on hold, initiating attended transfer');
-        const newSession = session.ua.invite($transfer.val().trim());
+        const newSession = session.userAgent.invite($transfer.val().trim());
         newSession.once('established', () => {
           console.log('New call initated. Click Complete to complete the transfer');
           $modal.find('.transfer-form button.complete').on('click', () => {
@@ -462,40 +480,45 @@ $(() => {
     });
 
     $modal.find('.hangup').on('click', () => {
-      session.terminate();
+      session.dispose();
     });
 
-    session.on('accepted', () => {
-      console.log('Event: Accepted');
-      captureActiveCallInfo(session);
+    session.stateChange.addListener((newState: SessionState) => {
+      switch (newState) {
+        case SessionState.Initial: {
+          console.log('Initial');
+          break;
+        }
+        case SessionState.Establishing: {
+          console.log('Establishing');
+          break;
+        }
+        case SessionState.Established: {
+          console.log('Established');
+          captureActiveCallInfo(session);
+          break;
+        }
+        case SessionState.Terminating: {
+          console.log('Terminating');
+          closeModal();
+          break;
+        }
+        case SessionState.Terminated: {
+          console.log('Terminated');
+          closeModal();
+          localStorage.setItem('activeCallInfo', '');
+          break;
+        }
+      }
     });
-    session.on('progress', () => {
-      console.log('Event: Progress');
-    });
-    session.on('rejected', () => {
-      console.log('Event: Rejected');
-      close();
-    });
-    session.on('failed', function () {
-      console.log('Event: Failed', arguments);
-      close();
-    });
-    session.on('terminated', () => {
-      console.log('Event: Terminated');
-      localStorage.setItem('activeCallInfo', '');
-      close();
-    });
-    session.on('cancel', () => {
-      console.log('Event: Cancel');
-      close();
-    });
+
     session.on('refer', () => {
       console.log('Event: Refer');
-      close();
+      closeModal();
     });
     session.on('replaced', (newSession) => {
       console.log('Event: Replaced: old session', session, 'has been replaced with', newSession);
-      close();
+      closeModal();
       onAccepted(newSession);
     });
     session.on('dtmf', () => {
@@ -506,13 +529,6 @@ $(() => {
     });
     session.on('unmuted', () => {
       console.log('Event: Unmuted');
-    });
-    session.on('connecting', () => {
-      console.log('Event: Connecting');
-    });
-    session.on('bye', () => {
-      console.log('Event: Bye');
-      close();
     });
   }
 
@@ -573,17 +589,19 @@ $(() => {
     const session = webPhone.userAgent.invite(voiceToken, {
       fromNumber: primaryNumber,
     });
-    session.on('accepted', () => {
-      onAccepted(session);
-      console.log('Conference call started');
-      bringIn(telephonySessionId, partyId)
-        .then((res) => res.json())
-        .then((response) => {
-          console.log('Adding call to conference succesful', response);
-        })
-        .catch((e) => {
-          console.error('Conference call failed', e.stack || e);
-        });
+    session.stateChange.addListener((newState) => {
+      if (newState === SessionState.Established) {
+        onAccepted(session);
+        console.log('Conference call started');
+        bringIn(telephonySessionId, partyId)
+          .then((res) => res.json())
+          .then((response) => {
+            console.log('Adding call to conference succesful', response);
+          })
+          .catch((e) => {
+            console.error('Conference call failed', e.stack || e);
+          });
+      }
     });
   }
 
